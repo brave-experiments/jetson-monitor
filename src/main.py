@@ -2,9 +2,10 @@ import logging
 import sched
 import sys
 import time
+
+from dispatchers import OrinAGXDispatcher, OrinNanoDispatcher
 from utils.args import parse_args, validate_args
 from utils.logger import init_default_logger
-from dispatchers import OrinNanoDispatcher, OrinAGXDispatcher
 
 
 def logger_setup():
@@ -13,9 +14,9 @@ def logger_setup():
 
 def main(args):
     logger = logger_setup()
-    if args.device == 'orin_nano':
+    if args.device == "orin_nano":
         jd = OrinNanoDispatcher(dummy=args.dummy)
-    elif args.device == 'orin_agx':
+    elif args.device == "orin_agx":
         jd = OrinAGXDispatcher(dummy=args.dummy)
     else:
         raise ValueError("This device is not yet supported.")
@@ -23,6 +24,7 @@ def main(args):
     if args.log_redis:
         # For now, assumes default setup
         import redis
+
         r = redis.Redis()
         rs = args.redis_stream
     else:
@@ -30,34 +32,46 @@ def main(args):
         rs = None
 
     scheduler = sched.scheduler(time.time, time.sleep)
+
     def event(args, r, rs):
         # Temperatures
-        all_temps = jd.get_temps(subsystems=args.subsystems) if 'temps' in args.metrics else None
+        all_temps = (
+            jd.get_temps(subsystems=args.subsystems)
+            if "temps" in args.metrics
+            else None
+        )
         if all_temps is not None:
-            for k,v in all_temps.items():
+            for k, v in all_temps.items():
                 log(k, v, logger, r, rs)
 
         # Power Figures
-        all_power_figs = jd.get_power_figs(metrics=args.metrics, subsystems=args.subsystems)
-        for k,v in all_power_figs.items():
+        all_power_figs = jd.get_power_figs(
+            metrics=args.metrics, subsystems=args.subsystems
+        )
+        for k, v in all_power_figs.items():
             log(k, v, logger, r, rs)
 
-        if getattr(jd, 'get_frequencies', None):
+        if getattr(jd, "get_frequencies", None):
             # Frequencies
-            all_freqs = jd.get_frequencies(metrics=args.metrics, subsystems=args.subsystems)
+            all_freqs = jd.get_frequencies(
+                metrics=args.metrics, subsystems=args.subsystems
+            )
             if all_freqs is not None:
-                for k,v in all_freqs.items():
+                for k, v in all_freqs.items():
                     log(k, v, logger, r, rs)
 
-        if getattr(jd, 'get_enabled_cpu_cores', None):
+        if getattr(jd, "get_enabled_cpu_cores", None):
             # Active cores
-            if 'cores' in args.metrics and ('cpu' in args.subsystems or 'all' in args.subsystems) \
-                or args.enabled_cores:
+            if (
+                "cores" in args.metrics
+                and ("cpu" in args.subsystems or "all" in args.subsystems)
+                or args.enabled_cores
+            ):
                 all_cores = jd.get_enabled_cpu_cores()
             else:
                 all_cores = None
             if all_cores is not None:
-                for i,c in enumerate(all_cores):
+                for i, c in enumerate(all_cores):
                     k = f"CPU Core #{i}"
                     v = f"{'enabled' if c=='1' else 'disabled'}"
                     log(k, v, logger, r, rs)
@@ -83,7 +97,7 @@ def log(log_key, logline, logger, redis_client, redis_stream):
         redis_client.xadd(redis_stream, {f"{log_key}": f"{logline}"})
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     args = parse_args(sys.argv)
     validate_args(args)
     main(args)
